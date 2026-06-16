@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Drowsiness Detection System</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Driver Drowsiness Detection System</h1>
+            <p>Real-time Driver Drowsiness Detection using MobileNetV2 and Dlib Facial Landmarks</p>
+        </header>
+
+        <main>
+            <div class="webcam-section glass-panel">
+                <div class="video-container">
+                    <video id="webcam" autoplay playsinline></video>
+                    <div id="alert-banner" class="alert-banner no-face">No Face Detected</div>
+                </div>
+                <div class="camera-status">
+                    <span id="cam-status-dot" class="dot red"></span>
+                    <span id="cam-status-text">Camera Disconnected</span>
+                </div>
+            </div>
+
+            <div class="detection-panel glass-panel">
+                <h2>Detection Panel</h2>
+                
+                <div class="metric-grid">
+                    <div class="metric-card">
+                        <span class="metric-label">Prediction</span>
+                        <span class="metric-value highlight" id="val-prediction">-</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-label">Confidence</span>
+                        <span class="metric-value" id="val-confidence">- %</span>
+                    </div>
+                </div>
+
+                <div class="metric-grid features">
+                    <div class="metric-card">
+                        <span class="metric-label">EAR</span>
+                        <span class="metric-value" id="val-ear">-</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-label">MAR</span>
+                        <span class="metric-value" id="val-mar">-</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-label">Pitch</span>
+                        <span class="metric-value" id="val-pitch">-</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-label">Yaw</span>
+                        <span class="metric-value" id="val-yaw">-</span>
+                    </div>
+                    <div class="metric-card">
+                        <span class="metric-label">Roll</span>
+                        <span class="metric-value" id="val-roll">-</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const alertBanner = document.getElementById('alert-banner');
+        const camStatusDot = document.getElementById('cam-status-dot');
+        const camStatusText = document.getElementById('cam-status-text');
+
+        const valPrediction = document.getElementById('val-prediction');
+        const valConfidence = document.getElementById('val-confidence');
+        const valEar = document.getElementById('val-ear');
+        const valMar = document.getElementById('val-mar');
+        const valPitch = document.getElementById('val-pitch');
+        const valYaw = document.getElementById('val-yaw');
+        const valRoll = document.getElementById('val-roll');
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        
+        let isProcessing = false;
+
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                video.srcObject = stream;
+                
+                video.onloadedmetadata = () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    camStatusDot.classList.replace('red', 'green');
+                    camStatusText.textContent = 'Camera Active';
+                    processFrame();
+                };
+            } catch (err) {
+                console.error("Error accessing webcam:", err);
+                camStatusText.textContent = 'Camera Access Denied';
+            }
+        }
+
+        async function processFrame() {
+            if (isProcessing) return;
+            isProcessing = true;
+
+            try {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const base64Img = canvas.toDataURL('image/jpeg', 0.8);
+
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: base64Img })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    updateUI(data);
+                }
+            } catch (err) {
+                console.error("Error sending frame:", err);
+            } finally {
+                isProcessing = false;
+                requestAnimationFrame(processFrame);
+            }
+        }
+        const alarmSound = new Audio('/static/alarm.mp3');
+        alarmSound.loop = true;
+        function updateUI(data) {
+            valPrediction.textContent = data.prediction;
+            valConfidence.textContent = data.confidence ? data.confidence.toFixed(2) + ' %' : '- %';
+            valEar.textContent = data.ear !== undefined ? data.ear.toFixed(3) : '-';
+            valMar.textContent = data.mar !== undefined ? data.mar.toFixed(3) : '-';
+            valPitch.textContent = data.pitch !== undefined ? data.pitch.toFixed(2) : '-';
+            valYaw.textContent = data.yaw !== undefined ? data.yaw.toFixed(2) : '-';
+            valRoll.textContent = data.roll !== undefined ? data.roll.toFixed(2) : '-';
+
+            if (data.prediction === 'No Face Detected') {
+                alertBanner.textContent = 'No Face Detected';
+                alertBanner.classList.add('no-face');
+                alarmSound.pause(); 
+                alarmSound.currentTime = 0;
+            } else if (data.prediction === 'Wake Up!') {
+                alertBanner.textContent = 'Wake Up!';
+                alertBanner.classList.add('danger');
+                if (alarmSound.paused) {
+                    alarmSound.play().catch(e => {
+                        console.error("Browser memblokir autoplay audio. Pengguna harus mengklik halaman terlebih dahulu:", e);
+                    });
+                }
+            } else {
+                alertBanner.textContent = 'Normal';
+                alertBanner.classList.add('normal');
+                alarmSound.pause(); 
+                alarmSound.currentTime = 0; // Reset durasi saat driver normal
+            }
+        }
+
+        window.addEventListener('load', initCamera);
+    </script>
+</body>
+</html>
