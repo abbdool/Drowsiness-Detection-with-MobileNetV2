@@ -81,86 +81,208 @@
         const valRoll = document.getElementById('val-roll');
 
         const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        
+        const ctx = canvas.getContext('2d');
+
+        const alarmSound = new Audio('/static/alarm.mp3');
+        alarmSound.loop = true;
+
         let isProcessing = false;
+        let cameraActive = false;
+
+        const FRAME_INTERVAL = 700;
+        const MAX_WIDTH = 640;
+
+        function setBanner(text, className) {
+            alertBanner.textContent = text;
+            alertBanner.classList.remove('no-face', 'danger', 'normal', 'error');
+            alertBanner.classList.add(className);
+        }
+
+        function stopAlarm() {
+            alarmSound.pause();
+            alarmSound.currentTime = 0;
+        }
+
+        function updateUI(data) {
+            valPrediction.textContent = data.prediction ?? '-';
+
+            valConfidence.textContent =
+                Number.isFinite(Number(data.confidence))
+                    ? Number(data.confidence).toFixed(2) + ' %'
+                    : '- %';
+
+            valEar.textContent =
+                Number.isFinite(Number(data.ear))
+                    ? Number(data.ear).toFixed(3)
+                    : '-';
+
+            valMar.textContent =
+                Number.isFinite(Number(data.mar))
+                    ? Number(data.mar).toFixed(3)
+                    : '-';
+
+            valPitch.textContent =
+                Number.isFinite(Number(data.pitch))
+                    ? Number(data.pitch).toFixed(2)
+                    : '-';
+
+            valYaw.textContent =
+                Number.isFinite(Number(data.yaw))
+                    ? Number(data.yaw).toFixed(2)
+                    : '-';
+
+            valRoll.textContent =
+                Number.isFinite(Number(data.roll))
+                    ? Number(data.roll).toFixed(2)
+                    : '-';
+
+            switch (data.prediction) {
+                case 'No Face Detected':
+                    setBanner('No Face Detected', 'no-face');
+                    stopAlarm();
+                    break;
+
+                case 'Wake Up!':
+                    setBanner('Wake Up!', 'danger');
+
+                    if (alarmSound.paused) {
+                        alarmSound.play().catch(error => {
+                            console.warn('Audio playback blocked:', error);
+                        });
+                    }
+                    break;
+
+                case 'Yawn Detected':
+                    setBanner('Yawn Detected', 'danger');
+                    stopAlarm();
+                    break;
+
+                case 'Normal':
+                    setBanner('Normal', 'normal');
+                    stopAlarm();
+                    break;
+
+                default:
+                    setBanner(data.prediction || 'Unknown', 'normal');
+                    stopAlarm();
+            }
+        }
 
         async function initCamera() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                if (!navigator.mediaDevices?.getUserMedia) {
+                    throw new Error('Camera API is not supported by this browser.');
+                }
+
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    },
+                    audio: false
+                });
+
                 video.srcObject = stream;
-                
+                await video.play();
+
                 video.onloadedmetadata = () => {
-                    canvas.width = video.videoWidth;
-                    canvas.height = video.videoHeight;
-                    camStatusDot.classList.replace('red', 'green');
+                    const width = video.videoWidth;
+                    const height = video.videoHeight;
+
+                    if (!width || !height) {
+                        setBanner('Camera unavailable', 'error');
+                        return;
+                    }
+
+                    const scale = Math.min(MAX_WIDTH / width, 1);
+
+                    canvas.width = Math.round(width * scale);
+                    canvas.height = Math.round(height * scale);
+
+                    cameraActive = true;
+                    camStatusDot.classList.remove('red');
+                    camStatusDot.classList.add('green');
                     camStatusText.textContent = 'Camera Active';
+
                     processFrame();
                 };
-            } catch (err) {
-                console.error("Error accessing webcam:", err);
+            } catch (error) {
+                console.error('Error accessing webcam:', error);
+
+                camStatusDot.classList.remove('green');
+                camStatusDot.classList.add('red');
                 camStatusText.textContent = 'Camera Access Denied';
+
+                setBanner('Camera unavailable', 'error');
             }
         }
 
         async function processFrame() {
-            if (isProcessing) return;
+            if (!cameraActive || isProcessing) return;
+
             isProcessing = true;
 
             try {
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                const base64Img = canvas.toDataURL('image/jpeg', 0.8);
+                if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+                    return;
+                }
+
+                ctx.drawImage(
+                    video,
+                    0,
+                    0,
+                    canvas.width,
+                    canvas.height
+                );
+
+                const base64Img = canvas.toDataURL('image/jpeg', 0.7);
 
                 const response = await fetch('/predict', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ image: base64Img })
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        image: base64Img
+                    })
                 });
 
-                if (response.ok) {
-                    const data = await response.json();
-                    updateUI(data);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        data.error || `Server error: ${response.status}`
+                    );
                 }
-            } catch (err) {
-                console.error("Error sending frame:", err);
+
+                updateUI(data);
+
+            } catch (error) {
+                console.error('Prediction request failed:', error);
+                valPrediction.textContent = 'Connection Error';
+                setBanner('Detection unavailable', 'error');
+                stopAlarm();
+
             } finally {
                 isProcessing = false;
-                requestAnimationFrame(processFrame);
-            }
-        }
-        const alarmSound = new Audio('/static/alarm.mp3');
-        alarmSound.loop = true;
-        function updateUI(data) {
-            valPrediction.textContent = data.prediction;
-            valConfidence.textContent = data.confidence ? data.confidence.toFixed(2) + ' %' : '- %';
-            valEar.textContent = data.ear !== undefined ? data.ear.toFixed(3) : '-';
-            valMar.textContent = data.mar !== undefined ? data.mar.toFixed(3) : '-';
-            valPitch.textContent = data.pitch !== undefined ? data.pitch.toFixed(2) : '-';
-            valYaw.textContent = data.yaw !== undefined ? data.yaw.toFixed(2) : '-';
-            valRoll.textContent = data.roll !== undefined ? data.roll.toFixed(2) : '-';
 
-            if (data.prediction === 'No Face Detected') {
-                alertBanner.textContent = 'No Face Detected';
-                alertBanner.classList.add('no-face');
-                alarmSound.pause(); 
-                alarmSound.currentTime = 0;
-            } else if (data.prediction === 'Wake Up!') {
-                alertBanner.textContent = 'Wake Up!';
-                alertBanner.classList.add('danger');
-                if (alarmSound.paused) {
-                    alarmSound.play().catch(e => {
-                        console.error("Browser memblokir autoplay audio. Pengguna harus mengklik halaman terlebih dahulu:", e);
-                    });
+                if (cameraActive) {
+                    setTimeout(processFrame, FRAME_INTERVAL);
                 }
-            } else {
-                alertBanner.textContent = 'Normal';
-                alertBanner.classList.add('normal');
-                alarmSound.pause(); 
-                alarmSound.currentTime = 0; // Reset durasi saat driver normal
             }
         }
 
         window.addEventListener('load', initCamera);
+
+        window.addEventListener('beforeunload', () => {
+            cameraActive = false;
+            stopAlarm();
+
+            if (video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+        });
     </script>
 </body>
 </html>
