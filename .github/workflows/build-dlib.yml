@@ -25,15 +25,22 @@ jobs:
             libpng-dev \
             libopenblas-dev \
             liblapack-dev
+            patchelf
 
       - name: Build wheel
         run: |
           python -m pip install --upgrade pip
           pip wheel --no-deps dlib==20.0.0 \
             --wheel-dir wheelhouse
+      - name: Repair wheel
+        run: |
+          python -m pip install auditwheel
+          auditwheel show wheelhouse/*.whl
+          auditwheel repair wheelhouse/*.whl \
+            --wheel-dir repaired
 
-      - name: Upload wheel
+      - name: Upload repaired wheel
         uses: actions/upload-artifact@v4
         with:
-          name: dlib-wheel
-          path: wheelhouse/*.whl
+          name: dlib-wheel-repaired
+          path: repaired/*.whl
