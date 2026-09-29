@@ -2,6 +2,8 @@
 import os
 import cv2
 import numpy as np
+os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
+os.environ["TF_NUM_INTEROP_THREADS"] = "1"
 import tensorflow as tf
 import dlib
 import base64
