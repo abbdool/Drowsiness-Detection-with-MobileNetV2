@@ -217,8 +217,14 @@ def extract_features(img):
     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
 
-    # Detect face
-    faces = detector(gray, 0)
+    # Detect face with one upsampling step
+    faces = detector(gray, 1)
+
+    app.logger.info(
+        "Image shape: %s | Detected faces: %d",
+        gray.shape,
+        len(faces)
+    )
 
     geom_features = np.zeros(5, dtype=np.float32)
     coords = None
@@ -341,6 +347,12 @@ def predict():
 
     img = base64_to_image(data["image"])
 
+    if img is not None:
+        app.logger.info(
+            "Received image: width=%d, height=%d",
+            img.shape[1],
+            img.shape[0]
+        )
     if img is None:
         return jsonify({
             "error": "Invalid image"
