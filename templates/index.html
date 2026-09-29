@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -28,7 +29,7 @@
 
             <div class="detection-panel glass-panel">
                 <h2>Detection Panel</h2>
-                
+
                 <div class="metric-grid">
                     <div class="metric-card">
                         <span class="metric-label">Prediction</span>
@@ -89,8 +90,9 @@
         let isProcessing = false;
         let cameraActive = false;
 
-        const FRAME_INTERVAL = 700;
-        const MAX_WIDTH = 640;
+        // Reduced frame frequency and image resolution for Render
+        const FRAME_INTERVAL = 2000;
+        const MAX_WIDTH = 320;
 
         function setBanner(text, className) {
             alertBanner.textContent = text;
@@ -168,7 +170,6 @@
             }
         }
 
-
         async function initCamera() {
             try {
                 if (!navigator.mediaDevices?.getUserMedia) {
@@ -184,7 +185,6 @@
                     audio: false
                 });
 
-                // Tunggu metadata sebelum mulai memproses frame
                 const metadataReady = new Promise(resolve => {
                     if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
                         resolve();
@@ -217,6 +217,7 @@
                 camStatusText.textContent = 'Camera Active';
 
                 console.log('Camera active:', width, height);
+                console.log('Processing resolution:', canvas.width, canvas.height);
                 console.log('Starting frame processing...');
 
                 processFrame();
@@ -270,7 +271,7 @@
                 try {
                     data = responseText ? JSON.parse(responseText) : {};
                 } catch (error) {
-                    console.error("Invalid server response:", responseText);
+                    console.error('Invalid server response:', responseText);
                 }
 
                 if (!response.ok) {
@@ -278,6 +279,7 @@
                         data.error || `Server error: ${response.status}`
                     );
                 }
+
                 updateUI(data);
 
             } catch (error) {
