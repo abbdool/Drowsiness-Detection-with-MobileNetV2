@@ -3,4 +3,5 @@ tensorflow==2.21.0
 numpy==1.26.4
 opencv-python-headless==4.9.0.80
 ./wheels/dlib-20.0.0-cp312-cp312-manylinux_2_35_x86_64.whl
+gunicorn==21.2.0
 Pillow==12.2.0
