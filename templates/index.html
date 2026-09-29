@@ -263,14 +263,21 @@
                     })
                 });
 
-                const data = await response.json();
+                const responseText = await response.text();
+
+                let data = {};
+
+                try {
+                    data = responseText ? JSON.parse(responseText) : {};
+                } catch (error) {
+                    console.error("Invalid server response:", responseText);
+                }
 
                 if (!response.ok) {
                     throw new Error(
                         data.error || `Server error: ${response.status}`
                     );
                 }
-
                 updateUI(data);
 
             } catch (error) {

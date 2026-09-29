@@ -218,7 +218,7 @@ def extract_features(img):
     gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
 
     # Detect face with one upsampling step
-    faces = detector(gray, 1)
+    faces = detector(gray, 0)
 
     app.logger.info(
         "Image shape: %s | Detected faces: %d",
